@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>School Simulator</title>
+<style>
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#1d1a3a;color:#fff;font-family:"Courier New",monospace;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100%}
+#hud{display:flex;flex-wrap:wrap;gap:2px 14px;padding:5px 8px;font-size:12px;background:#120f2a;border-bottom:3px solid #f2c14e}
+.eb{display:inline-block;width:60px;height:8px;background:#444;border:1px solid #fff;vertical-align:middle}.eb i{display:block;height:100%;background:#4cd964}
+#stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
+canvas{image-rendering:pixelated;background:#000;border:3px solid #f2c14e}
+#prompt{position:absolute;top:8px;left:50%;transform:translateX(-50%);background:#120f2acc;border:2px solid #f2c14e;padding:4px 10px;font-size:13px;display:none;white-space:nowrap}
+#dlg{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);width:min(94%,640px);background:#1d1a3a;border:4px solid #fff;box-shadow:0 0 0 3px #000;padding:10px 14px;font-size:15px;line-height:1.4;display:none;min-height:70px;cursor:pointer}
+#dlg b{color:#f2c14e}.nx{float:right;color:#f2c14e;animation:bl .8s infinite}@keyframes bl{50%{opacity:0}}
+#panel{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;z-index:5}
+.box{background:#2a2350;border:4px solid #fff;box-shadow:0 0 0 4px #000;padding:14px;width:min(92vw,440px);max-height:92vh;overflow:auto}
+.box h2{margin:0 0 8px;color:#f2c14e;font-size:20px}.bd{font-size:14px;line-height:1.5;margin-bottom:10px}
+.bt{display:flex;flex-direction:column;gap:6px}
+button{font:inherit;font-size:14px;color:#fff;background:#4b3f8f;border:3px solid #fff;padding:8px 10px;cursor:pointer;text-align:left}
+button:hover:not(:disabled),button:focus-visible{background:#f2c14e;color:#000;outline:none}button:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 0;border-bottom:1px dashed #6b5fb5;padding-bottom:4px}
+.row button{padding:4px 8px;font-size:12px}
+.bar{height:9px;background:#111;border:1px solid #fff;margin:2px 0 6px}.bar i{display:block;height:100%;background:#4cd964}
+.sm{font-size:12px;color:#cfc8ff}
+#toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#f2c14e;color:#000;border:3px solid #000;padding:6px 12px;font-size:13px;z-index:9;display:none;max-width:92vw;text-align:center}
+#pad{display:none;justify-content:space-between;align-items:center;padding:6px 14px 10px;background:#120f2a}
+#dp{display:grid;grid-template:repeat(3,46px)/repeat(3,46px);gap:2px}
+#pad button{padding:0;text-align:center;font-size:20px;touch-action:none}
+#ab{display:flex;gap:12px}#ab button{width:64px;height:64px;border-radius:50%}
+@media (pointer:coarse),(max-width:760px){#pad{display:flex}}
+</style></head><body>
+<div id="app"><div id="hud"></div>
+<div id="stage"><canvas id="c" width="320" height="180"></canvas><div id="prompt"></div><div id="dlg" onclick="act()"></div></div>
+<div id="pad"><div id="dp"><span></span><button data-k="u">▲</button><span></span><button data-k="l">◀</button><span></span><button data-k="r">▶</button><span></span><button data-k="d">▼</button><span></span></div>
+<div id="ab"><button id="bM">☰</button><button id="bE">E</button></div></div></div>
+<div id="panel"></div><div id="toast"></div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),C=$('c'),g=C.getContext('2d');
+const T=16,VW=320,VH=180,rnd=n=>Math.floor(Math.random()*n),clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rp=n=>'Rp'+Math.round(n).toLocaleString('id-ID'),p2=n=>String(n).padStart(2,'0'),r=(c,x,y,w,h)=>{g.fillStyle=c;g.fillRect(x,y,w,h)};
+const PH=['Pagi','Siang','Sore'],SUB={mat:'Matematika',ind:'Bahasa Indonesia',ing:'Bahasa Inggris',ipa:'IPA'};
+const ITEMS={nasi:{n:'Nasi Goreng',c:15000,e:40,t:'Makanan'},roti:{n:'Roti Bakar',c:8000,e:20,t:'Makanan'},teh:{n:'Es Teh',c:5000,e:15,t:'Minuman'},pensil:{n:'Pensil',c:3000,a:1,t:'Alat Tulis'},bukut:{n:'Buku Tulis',c:6000,a:1,t:'Buku'},buku:{n:'Buku Sains Perpus',a:3,t:'Barang Misi'}};
+const Q=[{id:'ontime',t:'Datang tepat waktu',d:'Masuk gedung sebelum 07.00',r:5000,max:1},{id:'math',t:'Temui guru matematika',d:'Bicara dengan Pak Budi',r:5000,max:1},{id:'book',t:'Cari buku di perpustakaan',d:'Ambil buku dari rak',r:8000,max:1},{id:'food',t:'Belikan makanan untuk teman',d:'Beli makanan, beri ke Dina',r:10000,max:1},{id:'class',t:'Ikuti pelajaran',d:'Selesaikan 2 pelajaran',r:8000,max:2},{id:'clean',t:'Bersihkan halaman',d:'Pungut 4 sampah',r:7000,max:4}];
+const A=[['first','Murid Rajin','Selesaikan 1 pelajaran',()=>S.lessons>=1],['soc','Populer','Punya 3 teman',()=>friends()>=3],['rich','Juragan Kantin','Punya Rp100.000',()=>S.money>=100000],['lv','Naik Daun','Capai level 3',()=>lvl()>=3],['smart','Juara Kelas','Nilai akademik 80',()=>S.acad>=80]];
+const NEW=()=>({name:'Rani',day:1,min:390,money:50000,en:80,acad:50,pop:10,exp:0,inv:{},map:'out',x:15*T+8,y:19*T+14,dir:1,wt:0,q:{},done:{},trash:{},rel:{},ach:{},lessons:0,arrived:0,bell:0,bookDay:0});
+let S=NEW(),mode='panel',gameOn=false,pcl=false,busy=0,fade=0,fadeDir=0,fadeCb=null,parts=[],keys={},moving=0,last=0,lastH=-1,opt={snd:true},N=[],ps='',sv=0,ach_t=0;
+const lvl=()=>1+Math.floor(S.exp/60),friends=()=>Object.values(S.rel).filter(v=>v>=2).length,phase=()=>S.min<660?0:S.min<900?1:2;
+/* ---------- audio ---------- */
+let AC=null;function sfx(t){if(!opt.snd)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const f={ok:[660],win:[523,659,784,1046],no:[180],door:[220,330],lvl:[440,660,880,1320],pick:[500,700]}[t]||[400];f.forEach((fr,i)=>{const o=AC.createOscillator(),n=AC.createGain(),s=AC.currentTime+i*.08;o.type='square';o.frequency.value=fr;o.connect(n);n.connect(AC.destination);n.gain.setValueAtTime(.04,s);n.gain.exponentialRampToValueAtTime(.001,s+.12);o.start(s);o.stop(s+.13)})}catch(e){}}
+/* ---------- maps ---------- */
+const M={};
+function mkMap(id,w,h,name,fill){const m={id,w,h,name,t:[],sol:[],o:[],doors:[]};for(let y=0;y<h;y++){m.t.push(Array(w).fill(fill));m.sol.push(Array(w).fill(0))}return M[id]=m}
+function rect(m,x,y,w,h,t,s){for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++){m.t[j][i]=t;m.sol[j][i]=s?1:0}}
+function ob(m,x,y,type,o){const b=Object.assign({x,y,type,s:1},o);if(b.s)m.sol[y][x]=1;m.o.push(b);return b}
+const out=mkMap('out',30,22,'Halaman Sekolah',0);
+rect(out,0,0,30,5,1,1);rect(out,0,5,30,3,2);rect(out,14,8,2,13,2);rect(out,19,12,10,8,4);
+rect(out,0,21,13,1,7,1);rect(out,17,21,13,1,7,1);rect(out,13,21,1,1,8,1);rect(out,16,21,1,1,8,1);rect(out,14,21,2,1,2);
+[[3,'k1'],[8,'k2'],[13,'guru'],[17,'lib'],[22,'kantin'],[27,'toilet']].forEach(([x,to])=>{out.t[4][x]=5;out.sol[4][x]=0;out.doors.push({x,y:4,to,tx:6,ty:7})});
+[[1,9],[27,9],[1,12],[4,13],[8,12],[2,17],[9,17],[6,19],[1,20],[10,20],[0,15],[11,14],[11,18],[28,10],[12,10],[17,10],[20,9],[9,9]].forEach(p=>ob(out,p[0],p[1],'tree'));
+[[4,16],[7,14]].forEach(p=>ob(out,p[0],p[1],'bench'));ob(out,19,15,'hoop');ob(out,28,15,'hoop');
+[[5,10],[22,11],[10,7],[26,8],[12,17],[17,19],[3,19],[24,10]].forEach((p,i)=>ob(out,p[0],p[1],'trash',{s:0,id:'t'+i}));
+ob(out,14,21,'gate',{s:0});ob(out,15,21,'gate',{s:0});
+function room(id,name,ex,tile,c){const m=mkMap(id,12,9,name,tile);m.c=c;rect(m,0,0,12,2,1,1);rect(m,0,2,1,7,1,1);rect(m,11,2,1,7,1,1);rect(m,1,8,10,1,1,1);m.t[8][6]=5;m.sol[8][6]=0;m.doors.push({x:6,y:8,to:'out',tx:ex,ty:5});return m}
+const k1=room('k1','Ruang Kelas 1',3,3),k2=room('k2','Ruang Kelas 2',8,3),gr=room('guru','Ruang Guru',13,3),lb=room('lib','Perpustakaan',17,3),kt=room('kantin','Kantin',22,6,['#f6ecd0','#e4d3a8']),tl=room('toilet','Toilet',27,6,['#bfe3ee','#a6d0de']);
+ob(k1,5,1,'board',{a:'mat',b:'ind',cut:600});ob(k2,5,1,'board',{a:'ing',b:'ipa',cut:720});
+[k1,k2].forEach(m=>[3,5,7,9].forEach(x=>{ob(m,x,4,'desk');ob(m,x,5,'chair')}));
+[[3,3],[8,3],[3,6],[8,6]].forEach(p=>{ob(gr,p[0],p[1],'desk');ob(gr,p[0],p[1]+1,'chair')});
+[2,3,4,6,7,8,9,10].forEach(x=>ob(lb,x,2,'shelf'));[[3,5],[8,5]].forEach(p=>{ob(lb,p[0],p[1],'desk');ob(lb,p[0],p[1]+1,'chair')});
+for(let x=3;x<=8;x++)ob(kt,x,3,'counter');[[2,6],[9,6]].forEach(p=>{ob(kt,p[0],p[1],'desk');ob(kt,p[0]+(p[0]<5?1:-1),p[1],'chair')});
+[3,5].forEach(x=>ob(tl,x,2,'sink'));[8,9,10].forEach(x=>ob(tl,x,2,'stall'));
+/* ---------- NPC ---------- */
+const NPCS=[
+{id:'budi',n:'Pak Budi (Guru)',c:'#3a6ea5',h:'#222',s:[[6,'out',9,6],[7,'k1',6,2],[12,'guru',5,5]],l:['Selamat datang! Papan tulis di kelas siap untuk pelajaran.','Matematika itu menyenangkan kalau rajin berlatih.','Jangan terlambat ya, bel berbunyi pukul 07.00.'],hook:()=>prog('math')},
+{id:'sari',n:'Bu Sari (Kepala Sekolah)',c:'#a23b72',h:'#4a2c2a',s:[[6,'out',12,6],[7,'guru',6,4],[14,'out',12,6]],l:['Disiplin adalah kunci kesuksesan.','Bersihkan halaman sekolah ya, itu tanggung jawab kita bersama.','Ibu bangga dengan siswa yang rajin belajar.']},
+{id:'dina',n:'Dina (Teman Sekelas)',c:'#ffd1e0',h:'#b5651d',lc:'#c0392b',s:[[6,'out',16,7],[7,'k1',4,6],[12,'out',9,9],[14,'kantin',5,5]],l:['Hai! Seru ya sekolah di sini.','Aku suka pelajaran IPA. Kamu?','Kantin menjual nasi goreng enak lho!']},
+{id:'rudi',n:'Rudi (Teman Sekelas)',c:'#9ad0f5',h:'#222',lc:'#c0392b',s:[[6,'out',20,10],[7,'k2',9,6],[12,'out',22,10]],l:['Mau main basket nanti di lapangan?','Aku belum belajar untuk ujian...','Semangat belajar, kawan!']},
+{id:'warti',n:'Bu Warti (Penjaga Kantin)',c:'#e0a030',h:'#555',s:[[6,'kantin',6,2]],shop:1,l:['Selamat datang di kantin! Mau beli apa?','Makan dulu biar tidak lemas.']},
+{id:'anto',n:'Pak Anto (Pustakawan)',c:'#5a8a5a',h:'#999',s:[[6,'lib',6,4]],l:['Pssst... tolong tenang di perpustakaan.','Coba cari buku sains di rak. Bacalah dengan teliti.','Membaca membuka jendela dunia.']}];
+function placeNPCs(){const h=Math.floor(S.min/60);N=NPCS.map(d=>{let e=d.s[0];d.s.forEach(s=>{if(h>=s[0])e=s});const x=e[2]*T+8,y=e[3]*T+14;return{d,map:e[1],x,y,hx:x,hy:y,tx:x,ty:y,dir:0,t:0,mv:0}})}
+/* ---------- game logic ---------- */
+function toast(s){toast.q=toast.q||[];toast.q.push(s);if(!toast.b)nt()}
+function nt(){const q=toast.q,e=$('toast');if(!q.length){toast.b=0;e.style.display='none';return}toast.b=1;e.textContent=q.shift();e.style.display='block';setTimeout(()=>{e.style.display='none';setTimeout(nt,150)},2600)}
+function gainExp(n){const b=lvl();S.exp+=n;if(lvl()>b){toast('⭐ Naik ke level '+lvl()+'!');sfx('lvl')}}
+function burst(){for(let i=0;i<28;i++)parts.push({x:S.x,y:S.y-12,vx:(Math.random()-.5)*120,vy:-30-Math.random()*80,l:.8+Math.random()*.5,c:['#f2c14e','#fff','#ff7aa8','#6be3ff'][rnd(4)]})}
+function prog(id,n){n=n||1;const q=Q.find(a=>a.id==id);if(S.done[id])return;S.q[id]=Math.min(q.max,(S.q[id]||0)+n);if(S.q[id]>=q.max){S.done[id]=1;S.money+=q.r;gainExp(20);toast('✔ Misi selesai: '+q.t+' (+'+rp(q.r)+')');sfx('win');burst()}}
+function add(k,n){S.inv[k]=(S.inv[k]||0)+(n||1)}function take(k){S.inv[k]--;if(S.inv[k]<=0)delete S.inv[k]}
+function zone(){const m=M[S.map];if(m.id!='out')return m.name;const x=S.x/T,y=S.y/T;return y>=18&&x>=11&&x<19?'Gerbang Sekolah':x>=19&&y>=11?'Lapangan Olahraga':x<11&&y>=11?'Taman Sekolah':'Halaman Sekolah'}
+/* dialog */
+let dl=[],dn='',dcb=null;
+function say(ls,name,cb){dl=ls.slice();dn=name||'';dcb=cb;mode='dialog';showDlg()}
+function showDlg(){const d=$('dlg');d.style.display='block';d.innerHTML=(dn?'<b>'+dn+'</b><br>':'')+dl[0]+'<span class=nx>▼ E</span>'}
+function adv(){dl.shift();if(dl.length)return showDlg();$('dlg').style.display='none';mode='play';const f=dcb;dcb=null;if(f)f()}
+/* panels */
+function P(t,b,btns,closable){pcl=closable!==false;const e=$('panel');e.innerHTML='<div class=box><h2>'+t+'</h2><div class=bd>'+b+'</div><div class=bt>'+(btns||[]).map((x,i)=>'<button data-n="'+(i+1)+'" onclick="'+x[1]+'"'+(x[2]?' disabled':'')+'>'+(i+1)+'. '+x[0]+'</button>').join('')+'</div></div>';e.style.display='flex';mode='panel'}
+function hidePanel(){$('panel').style.display='none';mode='play'}
+const bar=(v,m,c)=>'<div class=bar><i style="width:'+clamp(v/m*100,0,100)+'%;background:'+(c||'#4cd964')+'"></i></div>';
+function title(){gameOn=false;let has=false;try{has=!!localStorage.getItem('ss_save')}catch(e){}P('🏫 SCHOOL SIMULATOR','Simulasi kehidupan sekolah pixel art.<br><span class=sm>Jalani harimu sebagai siswa SMA Nusantara!</span>',[['New Game','newGame()'],['Continue','cont()',!has],['Settings','settings()'],['How to Play','howto()']],false)}
+function newGame(){P('New Game','Nama pemain:<br><input id=nm maxlength=10 value="'+S.name+'" style="font:inherit;padding:6px;margin-top:6px;width:100%">',[['Mulai','startNew()'],['Kembali','title()']],false)}
+function startNew(){const n=($('nm')?$('nm').value.trim():'')||'Rani';S=NEW();S.name=n;boot();say(['Selamat datang di SMA Nusantara, '+n+'!','Bel masuk berbunyi pukul 07.00. Masuklah ke gedung sebelum itu!','Gerak: WASD / panah. Interaksi: E. Menu: ESC.'])}
+function boot(){gameOn=true;lastH=Math.floor(S.min/60);placeNPCs();hidePanel();fade=0;fadeDir=0;busy=0}
+function cont(){try{S=Object.assign(NEW(),JSON.parse(localStorage.getItem('ss_save')));if(!M[S.map])S=NEW();boot();toast('Game dimuat')}catch(e){toast('Data simpanan rusak');title()}}
+function save(){try{localStorage.setItem('ss_save',JSON.stringify(S))}catch(e){}}
+function doSave(){save();toast('💾 Game tersimpan');sfx('ok')}
+function howto(){P('How to Play','<b>Kontrol</b><br>W A S D / Panah: jalan<br>E / Spasi: interaksi &amp; lanjut dialog<br>ESC: menu (di HP: tombol ☰)<br>Tombol angka: pilih menu<br><br><b>Tujuan</b><br>Masuk gedung sebelum 07.00, ikuti pelajaran di papan tulis kelas, selesaikan misi, beli makan di kantin (energi), berteman dengan NPC (bicara 2x), dan kumpulkan uang. Hari berakhir pukul 16.00 atau lewat gerbang (Pulang).',[['Kembali',gameOn?'pause()':'title()']])}
+function settings(){P('Settings','Suara: <b>'+(opt.snd?'ON':'OFF')+'</b>',[['Ganti suara','togSnd()'],['Hapus data simpanan','delSave()'],['Kembali',gameOn?'pause()':'title()']])}
+function togSnd(){opt.snd=!opt.snd;sfx('ok');settings()}
+function delSave(){try{localStorage.removeItem('ss_save')}catch(e){}toast('Data simpanan dihapus');settings()}
+function pause(){P('Menu Pause','Hari '+S.day+' · '+p2(Math.floor(S.min/60))+':'+p2(Math.floor(S.min%60)),[['Lanjutkan','hidePanel()'],['Inventory','inv()'],['Character Status','stat()'],['Quest Log','quests()'],['Map','mapP()'],['Simpan','doSave()'],['Settings','settings()'],['Restart Game','restart()'],['Menu Utama','toTitle()']])}
+function toTitle(){save();title()}
+function restart(){P('Restart Game','Semua progres akan dihapus. Yakin?',[['Ya, mulai ulang','S=Object.assign(NEW(),{name:S.name});boot();toast(\'Game dimulai ulang\')'],['Batal','pause()']])}
+function inv(){const ks=Object.keys(S.inv);P('Inventory',ks.length?ks.map(k=>'<div class=row><span>'+ITEMS[k].n+' ×'+S.inv[k]+'<br><span class=sm>'+ITEMS[k].t+'</span></span><button onclick="useItem(\''+k+'\')">Pakai</button></div>').join(''):'Tas kosong. Beli sesuatu di kantin!',[['Kembali','pause()']])}
+function useItem(k){if(!S.inv[k])return;take(k);const i=ITEMS[k];if(i.e)S.en=Math.min(100,S.en+i.e);if(i.a)S.acad=Math.min(100,S.acad+i.a);toast(i.e?i.n+' dimakan (+'+i.e+' Energi)':i.n+' dipakai (+'+i.a+' Nilai)');sfx('pick');inv()}
+function stat(){P('Character Status','<b>'+S.name+'</b> · Level '+lvl()+bar(S.exp%60,60,'#f2c14e')+'Energi: '+Math.round(S.en)+'/100'+bar(S.en,100)+'Nilai akademik: '+Math.round(S.acad)+'/100'+bar(S.acad,100,'#6be3ff')+'Popularitas: '+Math.round(S.pop)+'/100'+bar(S.pop,100,'#ff7aa8')+'Uang: '+rp(S.money)+'<br>Teman: '+friends()+' · Pelajaran: '+S.lessons+'<br><br><b>Jadwal</b><br><span class=sm>07.00–10.00 Matematika (Kelas 1)<br>10.00–15.00 B. Indonesia (Kelas 1)<br>07.00–12.00 B. Inggris (Kelas 2)<br>12.00–15.00 IPA (Kelas 2)</span><br><br><b>Achievement</b><br>'+A.map(a=>(S.ach[a[0]]?'🏆 ':'🔒 ')+a[1]+' <span class=sm>- '+a[2]+'</span>').join('<br>'),[['Kembali','pause()']])}
+function quests(){P('Quest Log',Q.map(q=>'<div style="margin-bottom:8px">'+(S.done[q.id]?'✔ ':'◻ ')+'<b>'+q.t+'</b><br><span class=sm>'+q.d+' · Hadiah '+rp(q.r)+'</span>'+bar(S.q[q.id]||0,q.max)+'</div>').join(''),[['Kembali','pause()']])}
+function mapP(){P('Peta Sekolah','<canvas id=mm width=240 height=176 style="border:2px solid #fff;width:100%;image-rendering:pixelated"></canvas><div class=sm>1 Kelas 1 · 2 Kelas 2 · 3 Ruang Guru · 4 Perpustakaan · 5 Kantin · 6 Toilet<br>Titik merah = posisimu ('+zone()+')</div>',[['Kembali','pause()']]);const c=$('mm').getContext('2d'),k=8,col=['#58b853','#b5533c','#e6cf98','#d9b07a','#c8603f','#7a4a2a','#ddd','#ccc','#a0522d'];for(let y=0;y<22;y++)for(let x=0;x<30;x++){c.fillStyle=col[out.t[y][x]]||'#58b853';c.fillRect(x*k,y*k,k,k)}
+c.font='bold 8px monospace';c.textAlign='center';out.doors.forEach((d,i)=>{c.fillStyle='#fff';c.fillText(i+1,d.x*k+4,d.y*k+7)});c.fillStyle='#000';[['GERBANG',14.5,20.5],['LAPANGAN',24,16],['TAMAN',5,16],['HALAMAN',10,9]].forEach(l=>c.fillText(l[0],l[1]*k,l[2]*k));
+let px=S.x/T*k,py=S.y/T*k;if(S.map!='out'){const d=out.doors.find(d=>d.to==S.map);px=d.x*k+4;py=5*k}c.fillStyle='#f00';c.fillRect(px-3,py-3,6,6);c.strokeStyle='#fff';c.strokeRect(px-3,py-3,6,6)}
+/* shop */
+function shop(){const ks=Object.keys(ITEMS).filter(k=>ITEMS[k].c);P('Kantin Bu Warti','Uangmu: <b>'+rp(S.money)+'</b>'+ks.map(k=>'<div class=row><span>'+ITEMS[k].n+'<br><span class=sm>'+rp(ITEMS[k].c)+(ITEMS[k].e?' · +'+ITEMS[k].e+' Energi':' · +'+ITEMS[k].a+' Nilai')+'</span></span><button onclick="buy(\''+k+'\')">Beli</button></div>').join(''),[['Selesai','hidePanel()']])}
+function buy(k){const i=ITEMS[k];if(S.money<i.c){toast('Uang tidak cukup!');sfx('no');return}S.money-=i.c;add(k);sfx('pick');toast('Membeli '+i.n);shop()}
+/* quiz */
+const QB={ind:[['Kata baku yang benar?',['Apotek','Apotik','Apotikk'],0],['Antonim kata "rajin" adalah...',['Malas','Tekun','Giat'],0],['Sinonim kata "indah" adalah...',['Cantik','Buruk','Kecil'],0],['Huruf kapital dipakai pada awal...',['Nama orang','Kata kerja','Kata sambung'],0],['Kalimat tanya diakhiri tanda...',['?','.','!'],0],['Kata "bertanam" berimbuhan...',['ber-','me-','di-'],0]],
+ing:[['Arti "Teacher"?',['Guru','Murid','Kepala'],0],['Arti "Book"?',['Buku','Meja','Pintu'],0],['Arti "Window"?',['Jendela','Lantai','Atap'],0],['Arti "Water"?',['Air','Api','Angin'],0],['Arti "Friend"?',['Teman','Musuh','Tetangga'],0],['Arti "Chair"?',['Kursi','Papan','Lampu'],0]],
+ipa:[['Planet terdekat dari Matahari?',['Merkurius','Venus','Mars'],0],['Gas yang kita hirup untuk hidup?',['Oksigen','Helium','Karbon'],0],['Air membeku pada suhu...',['0°C','50°C','100°C'],0],['Tumbuhan membuat makanan lewat...',['Fotosintesis','Respirasi','Evaporasi'],0],['Bumi mengelilingi...',['Matahari','Bulan','Mars'],0],['Jumlah kaki serangga?',['6','4','8'],0]]};
+function mk(q,o,c){const a=o[c],s=o.slice().sort(()=>Math.random()-.5);return{q,o:s,a:s.indexOf(a)}}
+function genQ(sub){if(sub=='mat'){const a=rnd(9)+2,b=rnd(9)+2,op=rnd(3),v=op==0?[a+' + '+b,a+b]:op==1?[a+' × '+b,a*b]:[(a+b)+' − '+b,a];const x=v[1];return mk('Berapa hasil '+v[0]+'?',[x,x+1+rnd(3),Math.max(0,x-1-rnd(3))].map(String),0)}const e=QB[sub][rnd(6)];return mk(e[0],e[1],e[2])}
+let qz=null;
+function lesson(o){if(S.min<420){say(['Pelajaran belum dimulai. Bel berbunyi pukul 07.00.']);return}if(S.min>=900){say(['Pelajaran hari ini sudah selesai.']);return}if(S.en<10){say(['Kamu terlalu lelah. Makan atau istirahat dulu!']);return}
+const sub=S.min<o.cut?o.a:o.b;qz={sub,qs:[genQ(sub),genQ(sub),genQ(sub)],i:0,ok:0};showQ()}
+function showQ(){const q=qz.qs[qz.i];P(SUB[qz.sub]+' ('+(qz.i+1)+'/3)',q.q,q.o.map((o,j)=>[o,'ans('+j+')']),false)}
+function ans(j){const q=qz.qs[qz.i],ok=j==q.a;if(ok){qz.ok++;sfx('win')}else sfx('no');P(ok?'✔ Benar!':'✘ Salah','Jawaban: <b>'+q.o[q.a]+'</b>',[['Lanjut','nextQ()']],false)}
+function nextQ(){qz.i++;if(qz.i<3)return showQ();const k=qz.ok;S.acad=Math.min(100,S.acad+k*2);gainExp(k*6+4);S.en=Math.max(0,S.en-10);S.min+=45;S.lessons++;prog('class');P('Pelajaran selesai','Benar: '+k+'/3<br>Nilai akademik +'+k*2+'<br>Energi -10 · Waktu +45 menit',[['OK','hidePanel()']],false)}
+/* day */
+function endDay(){save();P('Hari '+S.day+' selesai','Misi selesai: '+Object.keys(S.done).length+'/6<br>Uang: '+rp(S.money)+'<br>Nilai: '+Math.round(S.acad)+' · Level '+lvl()+'<br>Game tersimpan otomatis.',[['Mulai hari berikutnya','nextDay()']],false)}
+function nextDay(){S.day++;S.min=390;S.en=Math.max(S.en,70);S.q={};S.done={};S.trash={};S.arrived=0;S.bell=0;S.map='out';S.x=15*T+8;S.y=19*T+14;lastH=6;placeNPCs();hidePanel();say(['Hari '+S.day+' dimulai! Misi baru menantimu.'])}
+function gateAsk(){P('Pulang?','Akhiri hari ini dan pulang ke rumah?',[['Ya, pulang','endDay()'],['Belum','hidePanel()']])}
+/* interactions */
+const ACTL={board:'mengikuti pelajaran',chair:'duduk',shelf:'mencari buku',counter:'membeli makanan',hoop:'bermain basket',bench:'duduk santai',sink:'mencuci muka',trash:'memungut sampah',gate:'pulang (akhiri hari)'};
+const ACT={board:o=>lesson(o),chair:()=>{S.min+=15;S.en=Math.min(100,S.en+5);say(['Kamu duduk sebentar. (+5 Energi, +15 menit)'])},bench:()=>{S.min+=20;S.en=Math.min(100,S.en+8);say(['Duduk di bangku taman terasa nyaman. (+8 Energi, +20 menit)'])},
+shelf:()=>{if(S.bookDay==S.day)return say(['Kamu sudah mengambil buku hari ini.']);S.bookDay=S.day;add('buku');prog('book');sfx('pick');say(['Kamu menemukan "Buku Sains Perpus"! Barang ditambahkan ke Inventory.'])},
+counter:()=>shop(),hoop:()=>{if(S.en<15)return say(['Kamu terlalu lelah untuk berolahraga.']);S.en-=15;S.pop=Math.min(100,S.pop+2);S.min+=30;gainExp(8);say(['Kamu bermain basket dengan semangat! (-15 Energi, +2 Popularitas)'])},
+sink:()=>{S.en=Math.min(100,S.en+6);say(['Wajahmu segar kembali! (+6 Energi)'])},trash:o=>{S.trash[o.id]=1;S.money+=500;sfx('pick');toast('+Rp500');prog('clean')},gate:()=>gateAsk()};
+function talk(n){const d=n.d;let ls=[d.l[rnd(d.l.length)]];
+if(d.id=='dina'&&!S.done.food){const f=['nasi','roti','teh'].find(k=>S.inv[k]>0);if(f){take(f);ls=['Wah, kamu bawakan aku '+ITEMS[f].n+'? Terima kasih banyak!'];prog('food')}else ls=['Aku lapar sekali... Bisa belikan aku makanan di kantin?']}
+if(d.hook)d.hook();S.rel[d.id]=(S.rel[d.id]||0)+1;S.pop=Math.min(100,S.pop+.5);if(S.rel[d.id]==2){ls.push('Kalian sekarang berteman! (+1 Teman)');S.pop=Math.min(100,S.pop+3);gainExp(10);sfx('win')}
+say(ls,d.n,()=>{if(d.shop)shop()})}
+function target(){const m=M[S.map],px=S.x,py=S.y-6;let b=null,bd=24;
+N.forEach(n=>{if(n.map!=S.map)return;const d=Math.hypot(n.x-px,n.y-8-py);if(d<bd){bd=d;b={n,l:'bicara dengan '+n.d.n.split(' (')[0]}}});
+m.o.forEach(o=>{if(!ACTL[o.type]||(o.type=='trash'&&S.trash[o.id]))return;const d=Math.hypot(o.x*T+8-px,o.y*T+8-py);if(d<bd){bd=d;b={o,l:ACTL[o.type]}}});return b}
+function act(){if(mode=='dialog')adv();else if(mode=='play'&&!busy){const t=target();if(!t)return;sfx('ok');if(t.n)talk(t.n);else ACT[t.o.type](t.o)}}
+function esc(){if(mode=='play'&&gameOn&&!busy)pause();else if(mode=='panel'&&gameOn&&pcl)hidePanel()}
+function warp(m,tx,ty){busy=1;sfx('door');fadeDir=1;fadeCb=()=>{S.map=m;S.x=tx*T+8;S.y=ty*T+14;if(m!='out')S.dir=1;else S.dir=0}}
+/* ---------- update ---------- */
+function update(dt){
+if(fadeDir){fade+=fadeDir*dt*3.5;if(fadeDir>0&&fade>=1){fade=1;if(fadeCb)fadeCb();fadeCb=null;fadeDir=-1}else if(fadeDir<0&&fade<=0){fade=0;fadeDir=0;busy=0}}
+parts.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=150*dt;p.l-=dt});parts=parts.filter(p=>p.l>0);
+if(mode=='panel')return;
+N.forEach(n=>{if(n.map!=S.map)return;n.t-=dt;if(n.t<=0){n.t=1+Math.random()*2.5;if(Math.random()<.6){n.tx=n.hx+(rnd(5)-2)*T;n.ty=n.hy+(rnd(3)-1)*T}else{n.tx=n.x;n.ty=n.y}}
+const dx=n.tx-n.x,dy=n.ty-n.y;n.mv=0;if(Math.abs(dx)>1||Math.abs(dy)>1){const h=Math.abs(dx)>Math.abs(dy),sx=h?Math.sign(dx):0,sy=h?0:Math.sign(dy),nx=n.x+sx*28*dt,ny=n.y+sy*28*dt;if(!solid(n.map,nx-5,ny)&&!solid(n.map,nx+5,ny)&&!solid(n.map,nx-5,ny-5)&&!solid(n.map,nx+5,ny-5)){n.x=nx;n.y=ny;n.mv=1;n.dir=h?(sx<0?2:3):(sy<0?1:0)}else n.t=0}});
+if(mode!='play'||busy){moving=0;return}
+S.min+=dt*1.2;S.en=Math.max(0,S.en-dt*.045);
+const h=Math.floor(S.min/60);if(h!=lastH){lastH=h;placeNPCs()}
+if(S.min>=420&&!S.bell){S.bell=1;toast(S.arrived?'🔔 Bel berbunyi! Pelajaran dimulai.':'⚠ Bel berbunyi! Kamu terlambat, cepat masuk kelas!')}
+if(S.min>=960){endDay();return}
+let dx=(keys.r?1:0)-(keys.l?1:0),dy=(keys.d?1:0)-(keys.u?1:0);moving=dx||dy;
+if(moving){if(dx&&dy){dx*=.7071;dy*=.7071}const sp=(S.en<=0?35:62)*dt;S.dir=dx?(dx<0?2:3):(dy<0?1:0);let nx=S.x+dx*sp;if(free(nx,S.y))S.x=nx;let ny=S.y+dy*sp;if(free(S.x,ny))S.y=ny;S.wt+=dt}
+const tx=Math.floor(S.x/T),ty=Math.floor((S.y-2)/T),d=M[S.map].doors.find(d=>d.x==tx&&d.y==ty);
+if(d){if(d.to!='out'&&!S.arrived){S.arrived=1;if(S.min<=420)prog('ontime');else{toast('⚠ Terlambat! Popularitas & nilai turun sedikit.');S.pop=Math.max(0,S.pop-2);S.acad=Math.max(0,S.acad-1)}}warp(d.to,d.tx,d.ty)}
+ach_t+=dt;if(ach_t>1){ach_t=0;A.forEach(a=>{if(!S.ach[a[0]]&&a[3]()){S.ach[a[0]]=1;toast('🏆 Achievement: '+a[1]);sfx('lvl')}})}
+sv+=dt;if(sv>30){sv=0;save()}}
+function solid(m,px,py){const mm=M[m],x=Math.floor(px/T),y=Math.floor(py/T);return x<0||y<0||x>=mm.w||y>=mm.h||mm.sol[y][x]}
+function free(px,py){return!(solid(S.map,px-5,py)||solid(S.map,px+5,py)||solid(S.map,px-5,py-5)||solid(S.map,px+5,py-5))}
+/* ---------- render ---------- */
+function person(x,y,c,h,d,f,sk,lc,name){x=Math.round(x);y=Math.round(y);r('#0004',x-5,y-1,10,3);r(lc,x-4,y-4,3,f?3:4);r(lc,x+1,y-4,3,f?4:3);r(c,x-4,y-10,8,7);r(sk,x-5,y-9,1,4);r(sk,x+4,y-9,1,4);r(sk,x-4,y-17,8,7);r(h,x-4,y-18,8,3);if(d==1)r(h,x-4,y-17,8,6);else{r(h,x-4,y-17,8,1);r('#000',d==2?x-3:x-2,y-13,1,2);r('#000',d==3?x+2:x+1,y-13,1,2);if(d==2)r(h,x+2,y-17,2,4);if(d==3)r(h,x-4,y-17,2,4)}
+if(name){g.font='6px monospace';g.textAlign='center';g.fillStyle='#000';g.fillText(name,x+1,y-21);g.fillStyle='#fff';g.fillText(name,x,y-22)}}
+const D={tree:(x,y)=>{r('#6b4a2b',x+6,y+6,4,10);r('#2f8f3a',x+1,y-8,14,14);r('#3fae48',x+3,y-10,10,5);r('#2f8f3a',x-1,y-4,18,8)},
+desk:(x,y)=>{r('#5a3a1a',x+1,y+12,2,4);r('#5a3a1a',x+13,y+12,2,4);r('#8a5a2b',x,y+5,16,8);r('#b27a3c',x,y+3,16,4)},
+chair:(x,y)=>{r('#222',x+4,y+12,2,4);r('#222',x+10,y+12,2,4);r('#4a6fa5',x+3,y+7,10,6);r('#35507a',x+3,y+2,10,5)},
+board:(x,y)=>{r('#7a5a3a',x-17,y-4,50,21);r('#2c5a45',x-15,y-2,46,16);r('#fff',x-10,y+2,14,1);r('#fff',x+6,y+6,16,1);r('#f2c14e',x-14,y+12,5,2)},
+shelf:(x,y)=>{r('#6b4a2b',x,y-6,16,22);['#c0392b','#2e86c1','#27ae60','#f1c40f'].forEach((c,i)=>{r(c,x+2,y-4+i*5,12,4);r('#fff6',x+2+i*3,y-4+i*5,1,4)})},
+counter:(x,y)=>{r('#a0522d',x,y+2,16,14);r('#d2955a',x,y,16,5)},
+hoop:(x,y)=>{r('#ddd',x+6,y-8,3,24);r('#fff',x+1,y-10,14,8);r('#e33',x+4,y-4,8,2)},
+bench:(x,y)=>{r('#6b4a2b',x+1,y+10,2,5);r('#6b4a2b',x+13,y+10,2,5);r('#8a5a2b',x,y+5,16,5);r('#a06a35',x,y+2,16,3)},
+sink:(x,y)=>{r('#cfe8ef',x+1,y+4,14,9);r('#7fb5c7',x+3,y+6,10,5);r('#999',x+7,y+1,2,4)},
+stall:(x,y)=>{r('#77aabb',x,y-8,16,24);r('#558899',x+1,y-6,14,20);r('#fff',x+11,y+4,2,2)},
+trash:(x,y)=>{r('#999',x+4,y+9,8,6);r('#ccc',x+3,y+7,5,3);r('#7a7',x+9,y+6,3,3)}};
+function tile(m,t,x,y,X,Y){switch(t){case 0:r((x+y)%2?'#62c25c':'#58b853',X,Y,16,16);if((x*7+y*3)%5==0)r('#7ad66f',X+4,Y+5,2,3);break;
+case 1:if(m.id=='out'){if(y<2){r('#b5533c',X,Y,16,16);r('#9c4430',X,Y+14,16,2)}else{r('#efe2c0',X,Y,16,16);if(y==3&&x%4==1)r('#6fb3d8',X+3,Y+2,10,9)}}else{r(y<2?'#a695d6':'#7a6aae',X,Y,16,16);if(y==1)r('#8e7cc3',X,Y+12,16,4)}break;
+case 2:r('#e6cf98',X,Y,16,16);if((x*5+y*7)%6==0)r('#d4b97a',X+5,Y+6,3,2);break;
+case 3:r('#d9b07a',X,Y,16,16);r('#c99b62',X,Y+15,16,1);break;
+case 4:r('#c8603f',X,Y,16,16);if(x==24)r('#fff',X+7,Y,2,16);if(y==12)r('#fff',X,Y,16,1);if(y==19)r('#fff',X,Y+15,16,1);if(x==19)r('#fff',X,Y,1,16);if(x==28)r('#fff',X+15,Y,1,16);break;
+case 5:r('#d9b07a',X,Y,16,16);r('#7a4a2a',X+1,Y,14,16);r('#5a3a1a',X+3,Y+2,10,14);r('#f2c14e',X+10,Y+9,2,2);break;
+case 6:r(m.c[(x+y)%2],X,Y,16,16);break;
+case 7:r('#58b853',X,Y,16,16);r('#ccc',X,Y+5,16,3);r('#999',X+1,Y+2,2,13);r('#999',X+12,Y+2,2,13);break;
+case 8:r('#a0522d',X,Y-6,16,22);r('#80401f',X+2,Y-4,12,4);break}}
+function cam(){const m=M[S.map],w=m.w*T,h=m.h*T;let cx=S.x-VW/2,cy=S.y-VH/2;cx=w<=VW?(w-VW)/2:clamp(cx,0,w-VW);cy=h<=VH?(h-VH)/2:clamp(cy,0,h-VH);return[Math.round(cx),Math.round(cy)]}
+function render(){g.fillStyle='#111';g.fillRect(0,0,VW,VH);const m=M[S.map],[cx,cy]=cam();g.save();g.translate(-cx,-cy);
+const x0=Math.max(0,cx>>4),x1=Math.min(m.w,((cx+VW)>>4)+1),y0=Math.max(0,cy>>4),y1=Math.min(m.h,((cy+VH)>>4)+1);
+for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)tile(m,m.t[y][x],x,y,x*T,y*T);
+const L=[];m.o.forEach(o=>{if(!D[o.type]||(o.type=='trash'&&S.trash[o.id]))return;L.push([o.y*T+T,()=>D[o.type](o.x*T,o.y*T)])});
+const now=performance.now();
+N.forEach(n=>{if(n.map==S.map)L.push([n.y,()=>person(n.x,n.y,n.d.c,n.d.h,n.dir,n.mv?(now/150|0)%2:0,'#f1c27d',n.d.lc||'#334',n.d.n.split(' ')[0])])});
+L.push([S.y,()=>person(S.x,S.y,'#f4f4f4','#3a2a1a',S.dir,moving&&mode=='play'?(S.wt*8|0)%2:0,'#e0ac69','#c0392b',S.name)]);
+L.sort((a,b)=>a[0]-b[0]).forEach(l=>l[1]());
+parts.forEach(p=>r(p.c,p.x,p.y,2,2));g.restore();
+if(m.id=='out'&&phase()==2)r('rgba(255,120,30,.16)',0,0,VW,VH);
+if(fade>0)r('rgba(0,0,0,'+Math.min(1,fade)+')',0,0,VW,VH);
+let s='';if(mode=='play'&&!busy){const t=target();if(t)s='[E] '+t.l}
+if(s!=ps){ps=s;$('prompt').textContent=s;$('prompt').style.display=s?'block':'none'}}
+function hud(){const h=Math.floor(S.min/60),q=Q.find(a=>!S.done[a.id]);$('hud').innerHTML='<span>👤 '+S.name+' Lv'+lvl()+'</span><span>📅 Hari '+S.day+' · '+p2(h)+':'+p2(Math.floor(S.min%60))+' '+PH[phase()]+'</span><span>💰 '+rp(S.money)+'</span><span>⚡ <span class=eb><i style="width:'+S.en+'%"></i></span></span><span>📍 '+zone()+'</span><span>🎯 '+(q?q.t+' ('+(S.q[q.id]||0)+'/'+q.max+')':'Semua misi selesai!')+'</span>'}
+function loop(ts){requestAnimationFrame(loop);const dt=Math.min(.05,(ts-last)/1000||0);last=ts;update(dt);render()}
+/* ---------- input & init ---------- */
+const KM={w:'u',arrowup:'u',s:'d',arrowdown:'d',a:'l',arrowleft:'l',d:'r',arrowright:'r'};
+addEventListener('keydown',e=>{if(e.target.tagName=='INPUT'){if(e.key=='Enter'){const b=document.querySelector('#panel button[data-n="1"]');if(b)b.click()}return}
+const k=e.key.toLowerCase();if(KM[k]){keys[KM[k]]=1;e.preventDefault()}else if(k=='e'||k==' '||k=='enter'){if(mode!='panel')act();e.preventDefault()}else if(k=='escape')esc();
+else if(mode=='panel'&&/^[1-9]$/.test(k)){const b=document.querySelector('#panel button[data-n="'+k+'"]');if(b&&!b.disabled)b.click()}});
+addEventListener('keyup',e=>{const k=KM[e.key.toLowerCase()];if(k)keys[k]=0});addEventListener('blur',()=>{keys={}});
+document.querySelectorAll('#pad [data-k]').forEach(b=>{const k=b.dataset.k;b.onpointerdown=e=>{e.preventDefault();keys[k]=1};['pointerup','pointerleave','pointercancel'].forEach(ev=>b['on'+ev]=()=>{keys[k]=0})});
+$('bE').onpointerdown=e=>{e.preventDefault();act()};$('bM').onpointerdown=e=>{e.preventDefault();esc()};
+document.addEventListener('contextmenu',e=>e.preventDefault());
+function fit(){const s=$('stage'),k=Math.min((s.clientWidth-8)/VW,(s.clientHeight-8)/VH),sc=k>=2?Math.floor(k):Math.max(.5,k);C.style.width=VW*sc+'px';C.style.height=VH*sc+'px'}
+addEventListener('resize',fit);fit();placeNPCs();hud();setInterval(()=>{if(mode!='panel'||!gameOn)hud()},250);title();requestAnimationFrame(loop);
+</script></body></html>
